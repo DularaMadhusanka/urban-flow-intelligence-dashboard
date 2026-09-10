@@ -1,0 +1,5 @@
+model,mae,rmse,wape_percent,r_squared,selected_model,mae_improvement_vs_seasonal_percent,evaluation_period,forecast_horizon_hours
+Persistence,16.2731,51.507,75.17,0.2814,False,-147.2,Test period,24
+Standard GAT,11.8698,41.2246,54.83,0.5397,False,-80.31,Test period,24
+Seasonal naive,6.5831,22.2067,30.41,0.8664,False,0.0,Test period,24
+GRU-GAT,6.4216,21.6256,29.66,0.8733,True,2.45,Test period,24
