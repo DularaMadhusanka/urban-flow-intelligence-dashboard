@@ -929,32 +929,57 @@ with tabs[3]:
             unsafe_allow_html=True
         )
 
-        if rising_zones > 0:
-            growth_message = (
-                f"{rising_zones} selected zones are forecast to exceed "
-                "their corresponding previous-day demand."
-            )
-        else:
-            growth_message = (
-                "No selected zones are forecast to exceed their "
-                "corresponding previous-day demand. The recommendation "
-                "therefore reflects relative demand within the selected area."
-            )
-        
-        st.markdown(
-            f"""
-            <div class="business-card">
-            <b>Decision summary for the selected backtest hour:</b>
-            Review <b>{highest_priority['zone_name']}</b> first because it has
-            the highest positioning-priority score among the currently selected
-            areas. {growth_message}
-            <br><br>
-            Exact vehicle quantities require fleet availability, driver location
-            and operating-cost data, which are not included here.
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+        # Recalculate ranking within the currently selected areas
+hour_forecast["selected_area_priority_rank"] = (
+    hour_forecast["dispatch_priority_score"]
+    .rank(
+        method="first",
+        ascending=False
+    )
+    .astype(int)
+)
+
+highest_priority = (
+    hour_forecast
+    .sort_values("selected_area_priority_rank")
+    .iloc[0]
+)
+
+# Calculate this BEFORE checking its value
+rising_zones = int(
+    (
+        hour_forecast["predicted_growth"] > 0
+    ).sum()
+)
+
+if rising_zones > 0:
+    growth_message = (
+        f"{rising_zones} selected zones are forecast to exceed "
+        "their corresponding previous-day demand."
+    )
+else:
+    growth_message = (
+        "No selected zones are forecast to exceed their "
+        "corresponding previous-day demand. The recommendation "
+        "therefore reflects relative demand within the selected area."
+    )
+
+st.markdown(
+    f"""
+    <div class="business-card">
+    <b>Decision summary for the selected backtest hour:</b>
+    Review <b>{highest_priority['zone_name']}</b> first because it
+    has the highest positioning-priority score among the currently
+    selected areas.
+    <br><br>
+    {growth_message}
+    <br><br>
+    Exact vehicle quantities require fleet availability, driver
+    location and operating-cost data, which are not included here.
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 
 # ============================================================
