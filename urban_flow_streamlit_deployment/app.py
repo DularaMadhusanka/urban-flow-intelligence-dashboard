@@ -79,6 +79,23 @@ st.markdown(
         margin-bottom: 12px;
     }
 
+    .intro-card {
+        background: linear-gradient(135deg, #12304a, #0c1c2e);
+        border: 1px solid #2a526f;
+        border-radius: 14px;
+        padding: 18px 20px;
+        margin: 8px 0 18px 0;
+        font-size: 1rem;
+        line-height: 1.65;
+    }
+
+    .section-question {
+        color: #9eb4ca;
+        font-size: 0.95rem;
+        margin-top: -8px;
+        margin-bottom: 16px;
+    }
+
     .small-note {
         color: #9eb4ca;
         font-size: 0.90rem;
@@ -182,14 +199,18 @@ def style_figure(figure, height=420):
 # SIDEBAR FILTERS
 # ============================================================
 
-st.sidebar.title("Dashboard Filters")
+st.sidebar.title("Choose what to explore")
+
+st.sidebar.caption(
+    "These filters update the historical demand and passenger-route views."
+)
 
 available_boroughs = sorted(
     hourly["borough"].dropna().unique().tolist()
 )
 
 selected_boroughs = st.sidebar.multiselect(
-    "Origin borough",
+    "Pickup area",
     options=available_boroughs,
     default=available_boroughs
 )
@@ -198,7 +219,7 @@ minimum_date = hourly["pickup_date"].min().date()
 maximum_date = hourly["pickup_date"].max().date()
 
 selected_dates = st.sidebar.date_input(
-    "Historical date range",
+    "Dates to review",
     value=(minimum_date, maximum_date),
     min_value=minimum_date,
     max_value=maximum_date
@@ -227,6 +248,19 @@ st.sidebar.caption(
     "Selected model: GRU-GAT, seed 7"
 )
 
+with st.sidebar.expander("How to use this dashboard"):
+    st.markdown(
+        """
+        1. Choose one or more pickup areas.
+        2. Select the historical dates you want to examine.
+        3. Review demand peaks and common passenger routes.
+        4. Open **Fleet recommendations** to see where vehicles should be prioritised.
+
+        The forecast page uses a fixed historical test period, so the date filter
+        does not change its results.
+        """
+    )
+
 
 # ============================================================
 # TITLE
@@ -234,18 +268,26 @@ st.sidebar.caption(
 
 st.title("Urban Flow Intelligence")
 
-st.caption(
-    "Spatial-temporal taxi demand, origin–destination movement "
-    "and data-driven fleet positioning"
+st.markdown(
+    """
+    <div class="intro-card">
+    <b>Purpose:</b> Help taxi operations managers understand where and when
+    passengers request rides, where they travel, and which zones should receive
+    fleet attention during the next 24 forecast hours.<br><br>
+    <b>Start here:</b> Use the filters on the left, review the overview, then open
+    <b>Fleet recommendations</b> for clear positioning priorities.
+    </div>
+    """,
+    unsafe_allow_html=True
 )
 
 tabs = st.tabs(
     [
-        "Executive Overview",
-        "Demand Patterns",
-        "OD Intelligence",
-        "Forecast & Dispatch",
-        "Model Evaluation"
+        "Overview",
+        "Demand patterns",
+        "Passenger routes",
+        "Fleet recommendations",
+        "Forecast reliability"
     ]
 )
 
@@ -255,6 +297,12 @@ tabs = st.tabs(
 # ============================================================
 
 with tabs[0]:
+
+    st.subheader("What is happening across the selected area?")
+    st.markdown(
+        '<p class="section-question">A management summary of passenger demand during the selected dates.</p>',
+        unsafe_allow_html=True
+    )
 
     if historical_filtered.empty:
         st.warning(
@@ -301,23 +349,30 @@ with tabs[0]:
         col1, col2, col3, col4 = st.columns(4)
 
         col1.metric(
-            "Total pickups",
-            f"{total_demand:,}"
+            "Total passenger pickups",
+            f"{total_demand:,}",
+            help=(
+                "The number of valid taxi trips that began in the selected "
+                "areas and dates."
+            )
         )
 
         col2.metric(
-            "Zones analyzed",
-            f"{zones_analyzed:,}"
+            "Pickup zones covered",
+            f"{zones_analyzed:,}",
+            help="The number of taxi zones represented by the current selection."
         )
 
         col3.metric(
-            "Peak hourly demand",
-            f"{int(peak_row['demand']):,}"
+            "Busiest one-hour period",
+            f"{int(peak_row['demand']):,} pickups",
+            help="The highest combined pickup count recorded during one hour."
         )
 
         col4.metric(
-            "Highest-demand zone",
-            top_zone["zone_name"]
+            "Busiest pickup zone",
+            top_zone["zone_name"],
+            help="The zone with the most passenger pickups in the selected period."
         )
 
         left, right = st.columns([1.65, 1])
@@ -373,7 +428,13 @@ with tabs[0]:
                 use_container_width=True
             )
 
-        st.subheader("Management interpretation")
+        st.caption(
+            "How to read these charts: repeated peaks reveal recurring periods "
+            "when vehicles should be available before demand rises. The zone "
+            "ranking shows where that capacity is most likely to be needed."
+        )
+
+        st.subheader("What this means for operations")
 
         st.markdown(
             f"""
@@ -408,6 +469,12 @@ with tabs[0]:
 
 with tabs[1]:
 
+    st.subheader("Where and when is passenger demand highest?")
+    st.markdown(
+        '<p class="section-question">Select a zone to identify its recurring busy hours and quieter periods.</p>',
+        unsafe_allow_html=True
+    )
+
     zone_options = (
         historical_filtered[
             ["loc_id", "borough", "zone_name"]
@@ -420,8 +487,9 @@ with tabs[1]:
         st.warning("No zones match the current filters.")
     else:
         selected_zone_name = st.selectbox(
-            "Select a zone",
-            options=zone_options["zone_name"].tolist()
+            "Pickup zone",
+            options=zone_options["zone_name"].tolist(),
+            help="Choose one pickup zone to examine its hourly and weekly pattern."
         )
 
         selected_zone_id = zone_options.loc[
@@ -434,6 +502,8 @@ with tabs[1]:
             historical_filtered["loc_id"] ==
             selected_zone_id
         ].copy()
+
+        zone_peak = zone_data.loc[zone_data["demand"].idxmax()]
 
         zone_line = px.line(
             zone_data,
@@ -514,12 +584,31 @@ with tabs[1]:
             use_container_width=True
         )
 
+        st.markdown(
+            f"""
+            <div class="business-card">
+            <b>Operational reading:</b> {selected_zone_name} reached its largest
+            observed hourly demand on <b>{zone_peak['timestamp']:%A, %d %B at %H:%M}</b>,
+            when <b>{int(zone_peak['demand']):,} pickups</b> were recorded. Darker or
+            brighter heatmap cells identify recurring day-and-hour combinations
+            where advance vehicle coverage may be useful.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
 
 # ============================================================
 # TAB 3 — OD INTELLIGENCE
 # ============================================================
 
 with tabs[2]:
+
+    st.subheader("Where do passengers travel after pickup?")
+    st.markdown(
+        '<p class="section-question">Choose a starting zone to see its ten most common destinations and typical trip characteristics.</p>',
+        unsafe_allow_html=True
+    )
 
     filtered_od = od_flows[
         od_flows["origin_borough"].isin(
@@ -540,8 +629,9 @@ with tabs[2]:
         )
     else:
         selected_origin = st.selectbox(
-            "Select an origin zone",
-            options=od_zone_options
+            "Starting pickup zone",
+            options=od_zone_options,
+            help="The chart will show the most common destinations from this zone."
         )
 
         selected_routes = (
@@ -597,9 +687,34 @@ with tabs[2]:
                     "average_duration_minutes",
                     "average_total_charge"
                 ]
-            ],
+            ].rename(
+                columns={
+                    "origin_flow_rank": "Route rank",
+                    "destination_zone_name": "Destination",
+                    "destination_borough": "Destination area",
+                    "trip_count": "Trips",
+                    "percentage_of_origin_trips": "Share of origin trips (%)",
+                    "average_distance_miles": "Average distance (miles)",
+                    "average_duration_minutes": "Average duration (minutes)",
+                    "average_total_charge": "Average total charge"
+                }
+            ),
             use_container_width=True,
             hide_index=True
+        )
+
+        leading_route = selected_routes.iloc[0]
+        st.markdown(
+            f"""
+            <div class="business-card">
+            <b>Operational reading:</b> The most common destination from
+            <b>{selected_origin}</b> is <b>{leading_route['destination_zone_name']}</b>
+            with <b>{int(leading_route['trip_count']):,} trips</b>. This helps managers
+            anticipate where vehicles tend to finish journeys and whether those
+            destination areas are likely to need continued coverage or repositioning.
+            </div>
+            """,
+            unsafe_allow_html=True
         )
 
 
@@ -608,6 +723,19 @@ with tabs[2]:
 # ============================================================
 
 with tabs[3]:
+
+    st.subheader("Where should available vehicles be positioned next?")
+    st.markdown(
+        '<p class="section-question">Review one forecast hour at a time and prioritise zones with both high expected demand and positive growth.</p>',
+        unsafe_allow_html=True
+    )
+
+    st.info(
+        "Forecast demonstration: the predictions were produced using only "
+        "information available before each forecast hour. Actual demand is shown "
+        "afterward to evaluate performance. This is a historical backtest, not a "
+        "live real-time forecast."
+    )
 
     forecast_borough = forecast[
         forecast["borough"].isin(selected_boroughs)
@@ -629,7 +757,7 @@ with tabs[3]:
             options=forecast_times,
             format_func=lambda value: pd.Timestamp(
                 value
-            ).strftime("%A %d May, %H:%M")
+            ).strftime("%A %d %b, %H:%M")
         )
 
         hour_forecast = forecast_borough[
@@ -660,23 +788,27 @@ with tabs[3]:
         col1, col2, col3, col4 = st.columns(4)
 
         col1.metric(
-            "Predicted pickups",
-            f"{predicted_total:,.0f}"
+            "Expected passenger pickups",
+            f"{predicted_total:,.0f}",
+            help="The GRU-GAT estimate for all currently selected zones."
         )
 
         col2.metric(
-            "Observed pickups",
-            f"{actual_total:,.0f}"
+            "Pickups actually observed",
+            f"{actual_total:,.0f}",
+            help="The known value is shown because this page is a historical backtest."
         )
 
         col3.metric(
-            "Hourly WAPE",
-            f"{hour_wape:.1f}%"
+            "Total error for this hour",
+            f"{hour_wape:.1f}%",
+            help="Total absolute forecast error as a percentage of observed demand. Lower is better."
         )
 
         col4.metric(
-            "Top dispatch priority",
-            highest_priority["zone_name"]
+            "First zone to review",
+            highest_priority["zone_name"],
+            help="The highest relative positioning priority among selected zones."
         )
 
         top_forecasts = (
@@ -733,6 +865,18 @@ with tabs[3]:
             .head(10)
         )
 
+        def assign_priority_status(rank):
+            if rank <= 10:
+                return "High positioning priority"
+            if rank <= 30:
+                return "Monitor and prepare"
+            return "Maintain normal coverage"
+
+        priority_table = priority_table.copy()
+        priority_table["recommended_action"] = priority_table[
+            "dispatch_priority_rank"
+        ].apply(assign_priority_status)
+
         st.dataframe(
             priority_table[
                 [
@@ -742,9 +886,21 @@ with tabs[3]:
                     "predicted_demand",
                     "seasonal_naive_demand",
                     "predicted_growth",
-                    "actual_demand"
+                    "actual_demand",
+                    "recommended_action"
                 ]
-            ],
+            ].rename(
+                columns={
+                    "dispatch_priority_rank": "Priority rank",
+                    "borough": "Area",
+                    "zone_name": "Pickup zone",
+                    "predicted_demand": "Expected pickups",
+                    "seasonal_naive_demand": "Same hour previous day",
+                    "predicted_growth": "Expected change",
+                    "actual_demand": "Observed pickups",
+                    "recommended_action": "Recommended action"
+                }
+            ),
             use_container_width=True,
             hide_index=True
         )
@@ -762,12 +918,35 @@ with tabs[3]:
             unsafe_allow_html=True
         )
 
+        rising_zones = hour_forecast[
+            hour_forecast["predicted_growth"] > 0
+        ].shape[0]
+
+        st.markdown(
+            f"""
+            <div class="business-card">
+            <b>Decision summary:</b> Review <b>{highest_priority['zone_name']}</b>
+            first for this forecast hour. Across the selected area,
+            <b>{rising_zones} zones</b> are expected to exceed their corresponding
+            previous-day demand. Exact vehicle quantities require fleet availability,
+            driver location and operating-cost data, which are not included here.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
 
 # ============================================================
 # TAB 5 — MODEL EVALUATION
 # ============================================================
 
 with tabs[4]:
+
+    st.subheader("How reliable is the 24-hour demand forecast?")
+    st.markdown(
+        '<p class="section-question">Lower error values are better; a higher explained-demand percentage is better.</p>',
+        unsafe_allow_html=True
+    )
 
     selected_model = model_metrics[
         model_metrics["selected_model"] == True
@@ -776,23 +955,27 @@ with tabs[4]:
     col1, col2, col3, col4 = st.columns(4)
 
     col1.metric(
-        "GRU-GAT MAE",
-        f"{selected_model['mae']:.4f}"
+        "Average error per zone-hour",
+        f"{selected_model['mae']:.2f} trips",
+        help="Mean Absolute Error: the typical absolute difference between predicted and observed pickups."
     )
 
     col2.metric(
-        "GRU-GAT RMSE",
-        f"{selected_model['rmse']:.4f}"
+        "Large-error-sensitive score",
+        f"{selected_model['rmse']:.2f} trips",
+        help="Root Mean Squared Error gives larger mistakes more influence. Lower is better."
     )
 
     col3.metric(
-        "GRU-GAT WAPE",
-        f"{selected_model['wape_percent']:.2f}%"
+        "Total forecast error",
+        f"{selected_model['wape_percent']:.2f}%",
+        help="Total absolute error divided by total observed demand. Lower is better."
     )
 
     col4.metric(
-        "GRU-GAT R²",
-        f"{selected_model['r_squared']:.4f}"
+        "Demand variation explained",
+        f"{selected_model['r_squared'] * 100:.1f}%",
+        help="The proportion of variation in demand explained by the model. Higher is better."
     )
 
     left, right = st.columns(2)
@@ -811,7 +994,7 @@ with tabs[4]:
             y="error",
             color="metric",
             barmode="group",
-            title="Model Error Comparison",
+            title="Average and Large-Error-Sensitive Scores",
             labels={
                 "model": "",
                 "error": "Trips",
@@ -837,7 +1020,7 @@ with tabs[4]:
             x="model",
             y="wape_percent",
             color="model",
-            title="WAPE Comparison",
+            title="Total Forecast Error by Method",
             labels={
                 "model": "",
                 "wape_percent": "WAPE (%)"
@@ -863,7 +1046,7 @@ with tabs[4]:
             "#22c7a9",
             "#ff9e45"
         ],
-        title="Five-Seed Stability",
+        title="Consistency Across Five Training Runs",
         labels={
             "seed": "Random seed",
             "test_mae": "Test MAE",
@@ -887,9 +1070,30 @@ with tabs[4]:
     )
 
     st.info(
-        "Seed 7 was selected using validation performance, "
-        "not test performance. This prevents test-set leakage. "
-        "All five seeds produced similar test results, indicating "
-        "that the GRU-GAT improvement is stable rather than an "
-        "isolated random initialization."
+        "The selected GRU-GAT model averages about 6.42 trips of error per "
+        "zone-hour and explains 87.3% of observed demand variation. Five "
+        "independent training runs produced very similar results, supporting "
+        "the stability of the conclusion."
     )
+
+    with st.expander("Technical details and terminology"):
+        st.markdown(
+            """
+            - **Seasonal baseline:** assumes demand will match the corresponding
+              hour of the previous day.
+            - **GRU:** learns how demand changes across the preceding 24 hours.
+            - **Graph Attention Network (GAT):** learns how connected taxi zones
+              influence one another through passenger flows.
+            - **Seasonal-residual forecast:** starts from the previous-day value
+              and learns a correction rather than predicting demand from scratch.
+            - **MAE:** average absolute error per zone and forecast hour.
+            - **RMSE:** an error measure that penalises large mistakes more strongly.
+            - **WAPE:** total absolute error as a percentage of total demand.
+            - **R²:** proportion of observed demand variation explained by the model.
+            - **Five training runs:** tests whether performance is stable across
+              different random initialisations.
+
+            Seed 7 was selected using validation performance rather than test
+            performance, preventing the test data from influencing model selection.
+            """
+        )
