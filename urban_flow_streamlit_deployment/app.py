@@ -755,6 +755,7 @@ with tabs[3]:
         selected_forecast_time = st.select_slider(
             "Forecast hour",
             options=forecast_times,
+            value=forecast_times[-1],
             format_func=lambda value: pd.Timestamp(
                 value
             ).strftime("%A %d %b, %H:%M")
@@ -779,9 +780,19 @@ with tabs[3]:
             max(hour_forecast["actual_demand"].sum(), 1)
         )
 
+        # Recalculate priority rank within the currently selected boroughs
+        hour_forecast["selected_area_priority_rank"] = (
+            hour_forecast["dispatch_priority_score"]
+            .rank(
+                method="first",
+                ascending=False
+            )
+            .astype(int)
+        )
+        
         highest_priority = (
             hour_forecast
-            .sort_values("dispatch_priority_rank")
+            .sort_values("selected_area_priority_rank")
             .iloc[0]
         )
 
@@ -918,18 +929,28 @@ with tabs[3]:
             unsafe_allow_html=True
         )
 
-        rising_zones = hour_forecast[
-            hour_forecast["predicted_growth"] > 0
-        ].shape[0]
-
+        if rising_zones > 0:
+            growth_message = (
+                f"{rising_zones} selected zones are forecast to exceed "
+                "their corresponding previous-day demand."
+            )
+        else:
+            growth_message = (
+                "No selected zones are forecast to exceed their "
+                "corresponding previous-day demand. The recommendation "
+                "therefore reflects relative demand within the selected area."
+            )
+        
         st.markdown(
             f"""
             <div class="business-card">
-            <b>Decision summary:</b> Review <b>{highest_priority['zone_name']}</b>
-            first for this forecast hour. Across the selected area,
-            <b>{rising_zones} zones</b> are expected to exceed their corresponding
-            previous-day demand. Exact vehicle quantities require fleet availability,
-            driver location and operating-cost data, which are not included here.
+            <b>Decision summary for the selected backtest hour:</b>
+            Review <b>{highest_priority['zone_name']}</b> first because it has
+            the highest positioning-priority score among the currently selected
+            areas. {growth_message}
+            <br><br>
+            Exact vehicle quantities require fleet availability, driver location
+            and operating-cost data, which are not included here.
             </div>
             """,
             unsafe_allow_html=True
